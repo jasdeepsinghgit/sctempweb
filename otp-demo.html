@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sendcrow — OTP Demo (Consent)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <style>
+    :root { --fg:#111; --muted:#666; --bg:#fff; --accent:#5b8def; --ok:#0a7; --err:#d33; }
+    html,body { margin:0; padding:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+    .wrap { max-width:720px; margin:48px auto; padding:0 20px; }
+    h1 { margin:0 0 8px; font-size:28px; }
+    .sub { color:var(--muted); margin-bottom:24px; }
+    form { background:#fafafa; border:1px solid #eee; border-radius:12px; padding:20px; }
+    label { display:block; font-weight:600; margin:12px 0 6px; }
+    input, select, button, textarea {
+      font:inherit; width:100%; box-sizing:border-box;
+      padding:12px; border:1px solid #ddd; border-radius:10px; background:#fff;
+    }
+    .row { display:grid; grid-template-columns:140px 1fr; gap:12px; }
+    .disclosure {
+      margin-top:14px; font-size:14px; color:#333; background:#fff; border:1px dashed #ddd;
+      padding:12px; border-radius:10px;
+    }
+    .disclosure a { color:var(--accent); }
+    .small { font-size:12px; color:var(--muted); }
+    .btn {
+      margin-top:14px; background:var(--accent); color:#fff; border:none; cursor:pointer; font-weight:700;
+    }
+    .btn:hover { filter:brightness(0.95); }
+    .note { margin-top:12px; color:var(--muted); }
+    .alert { margin-top:16px; padding:12px 14px; border-radius:10px; display:none; }
+    .alert.ok { display:block; border:1px solid #cfeadf; background:#f3fbf7; color:#0a5138; }
+    .alert.err { display:block; border:1px solid #f3c2c2; background:#fff6f6; color:#6c1b1b; }
+    .sample { margin-top:16px; background:#fff; border:1px solid #eee; border-radius:10px; padding:12px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    footer { margin-top:32px; font-size:13px; color:var(--muted); }
+    .badge { display:inline-block; padding:2px 8px; font-size:12px; border-radius:999px; background:#eef3ff; color:#2d50aa; margin-left:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>One-Time Passcode (OTP) — Demo <span class="badge">Consent Proof</span></h1>
+    <p class="sub">This public demo shows how Sendcrow collects explicit consent before sending a one-time verification code by SMS. No messages are sent from this page.</p>
+
+    <form id="otpDemo" novalidate>
+      <div class="row">
+        <div>
+          <label for="country">Country</label>
+          <select id="country" name="country" aria-label="Country">
+            <option value="US">United States (+1)</option>
+            <option value="CA">Canada (+1)</option>
+          </select>
+        </div>
+        <div>
+          <label for="phone">Mobile number (E.164)</label>
+          <input id="phone" name="phone" inputmode="tel" autocomplete="tel"
+                 placeholder="+15551234567" aria-describedby="phoneHelp" required />
+          <div id="phoneHelp" class="small">Format: <code>+1</code> followed by 10 digits. SMS supported in US/CA for now.</div>
+        </div>
+      </div>
+
+      <label for="purpose">Reason for OTP</label>
+      <select id="purpose" name="purpose">
+        <option>Open a secure notice</option>
+        <option>Access a shared document</option>
+        <option>Verify account sign-in</option>
+      </select>
+
+      <div class="disclosure" id="disclosure">
+        By selecting <strong>Send code</strong>, you agree to receive a <strong>one-time SMS</strong> to verify your identity for the selected purpose.
+        <strong>No marketing or promotional messages.</strong> Msg &amp; data rates may apply. Reply <strong>STOP</strong> to opt out, <strong>HELP</strong> for help.
+        See our <a href="/sms-policy">SMS Policy</a>, <a href="/terms">Terms</a>, and <a href="/privacy">Privacy</a>.
+      </div>
+
+      <button class="btn" type="submit">Send code</button>
+      <div class="note small">Demo only — pressing “Send code” shows the exact message copy we would send.</div>
+
+      <div id="ok" class="alert ok" role="status" aria-live="polite"></div>
+      <div id="err" class="alert err" role="alert"></div>
+
+      <div class="sample" id="sample" hidden>
+        <strong>Sample SMS:</strong>
+        <div id="smsPreview"><code>Sendcrow: Your verification code is 000000. Reply STOP to opt out, HELP for help. Msg&Data rates may apply.</code></div>
+        <div class="small" style="margin-top:6px;">Twilio reviewers: this is demonstration copy only. In production, the 6-digit code is random and expires quickly.</div>
+      </div>
+    </form>
+
+    <footer>
+      © 2025 Sendcrow • For review purposes only. If you need assistance, email <a href="mailto:help@sendcrow.com">help@sendcrow.com</a>.
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      const form = document.getElementById('otpDemo');
+      const ok = document.getElementById('ok');
+      const err = document.getElementById('err');
+      const sample = document.getElementById('sample');
+      const smsPreview = document.getElementById('smsPreview');
+
+      function validE164US(num) {
+        return /^\+1\d{10}$/.test(num.trim());
+      }
+
+      function sixDigits() {
+        return ('' + Math.floor(100000 + Math.random() * 900000));
+      }
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        ok.style.display = 'none';
+        err.style.display = 'none';
+        sample.hidden = true;
+
+        const phone = document.getElementById('phone').value.trim();
+        const country = document.getElementById('country').value;
+        const reason = document.getElementById('purpose').value;
+
+        // Validate US/CA format (+1XXXXXXXXXX)
+        if (!validE164US(phone)) {
+          err.textContent = 'Please enter a valid US/Canada mobile number in E.164 format, e.g., +15551234567.';
+          err.style.display = 'block';
+          return;
+        }
+
+        // “Record” consent (demo)
+        const code = sixDigits();
+        const sms = `Sendcrow: Your verification code is ${code}. Reply STOP to opt out, HELP for help. Msg&Data rates may apply.`;
+        smsPreview.innerHTML = `<code>${sms}</code>`;
+
+        ok.innerHTML = `Thanks! We recorded your consent to receive a one-time SMS for “${reason}” at <strong>${phone}</strong> (country: ${country}).<br/>This page is a demo — no SMS was sent.`;
+        ok.style.display = 'block';
+        sample.hidden = false;
+        form.querySelector('button').blur();
+      });
+    }());
+  </script>
+
+  <noscript>
+    <div class="wrap"><p><strong>JavaScript is required</strong> to display the demo consent flow.</p></div>
+  </noscript>
+</body>
+</html>
